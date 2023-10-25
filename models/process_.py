@@ -27,18 +27,21 @@ from logar_sistema import efetuar_login_nibo
 from time import sleep
 from gerenciar_tabela_nibo import *
 import shutil
+from pastas_rede.manipular_pastas_rede import *
 
 
 class Process:
 
-    def __init__(self, cod_cliente, cnpj, razao_social, grupo, contador, competencia, check, status, obs):
+    def __init__(self, cod_cliente, cnpj, razao_social, grupo, contador, competencia, configuracao, check, status, obs):
 
         self.cod_cliente = cod_cliente
         self.cnpj = cnpj
         self.razao_social = razao_social
         self.grupo = grupo
         self.contador = contador
+        self.configuracao = configuracao
         self.competencia = competencia.replace('/', '')
+        self.data = competencia
         self.check = check
         self.status = status
         self.obs = obs
@@ -49,9 +52,9 @@ class Process:
 
     # criar pasta com os passos se não existir
 
-    def create_paths(self):
+    def create_paths_interno(self):
 
-        for step in range(1, 10):
+        for step in range(1, 9):
             step = f'step_{str(step)}'
             if not os.path.exists(os.path.join(self.path_default, step)):
 
@@ -60,6 +63,63 @@ class Process:
 
     def add_steps(self, name, numero, step):
         self.dict_steps.update({numero: step(name, numero, self.path_default)})
+
+    def criar_caminho_pasta_cliente(self):
+
+        # formato data '01072023'
+
+        caminho_padrao = 'W:\\Pessoal\\Clientes'
+
+        if self.grupo == '---':
+            pass
+        else:
+            caminho_padrao = f"{caminho_padrao}\\GRUPO {self.grupo}"
+        print(caminho_padrao)
+
+        nova_data = self.data.split('/')
+        ano = nova_data[-1]
+        mes = nova_data[0]
+        pasta_mes_ano = calcular_mes(mes, ano)
+        nome_cliente = ''
+        lista_clientes = os.listdir(caminho_padrao)
+
+        # verificar se já existe a pasta do cliente
+        for cliente in lista_clientes:
+            try:
+                if cliente.split('-')[-1].strip() == str(self.cod_cliente):
+                    nome_cliente = cliente
+                    break
+            except:
+                pass
+
+        # se exister não fazer nada
+        if nome_cliente:
+            pass
+        # se não existir, criar a pasta do cliente e o caminho de conferencias
+        else:
+            # avisar o adm que foi criada uma nova pasta do cliente
+            send_email_adm_anexo(
+                f"sera criada uma nova pasta para o cliente {self.razao_social} pois não existia")
+
+            nome_cliente = f"{self.razao_social} - {self.cod_cliente}"
+
+        try:
+
+            if not existe_essa_pasta(f'{caminho_padrao}\\{nome_cliente}\\FOLHA DE PAGAMENTO\\{ano}\\{pasta_mes_ano}\\DCTFWEB'):
+
+                criar_nova_pasta(
+                    f'{caminho_padrao}\\{nome_cliente}\\FOLHA DE PAGAMENTO\\{ano}\\{pasta_mes_ano}\\DCTFWEB')
+
+            if not existe_essa_pasta(f'{caminho_padrao}\\{nome_cliente}\\FOLHA DE PAGAMENTO\\{ano}\\{pasta_mes_ano}\\SEFIP'):
+
+                criar_nova_pasta(
+                    f'{caminho_padrao}\\{nome_cliente}\\FOLHA DE PAGAMENTO\\{ano}\\{pasta_mes_ano}\\SEFIP')
+
+            return f'{caminho_padrao}\\{nome_cliente}\\FOLHA DE PAGAMENTO\\{ano}\\{pasta_mes_ano}'
+
+        except Exception as e:
+
+            raise Exception(f'Ocorreu um erro ao criar caminho pastas {e}')
 
 
 class Step:
@@ -70,7 +130,7 @@ class Step:
         self.numero = numero
         self.path_default = path_default
 
-    def copy_files(self, pasta_origem, pasta_destino, file):
+    def copy_files_intern(self, pasta_origem, pasta_destino, file):
 
         origem = os.path.join(self.path_default, pasta_origem, file)
         destino = os.path.join(self.path_default, pasta_destino, file)
@@ -91,7 +151,36 @@ class Step:
 
 class Step1(Step):
 
-    pass
+    def mover_arquivos_gerados_questor(self, configuracao, competencia, cod_cliente):
+        # competencia 072023
+        # caminho_padrao_origem = f'W:\\Pessoal\\Fechamento de folha automatizado\\Automação Folha\\Configuração 0003 - Teste Folha Automatizada\\{competencia}'
+        caminho_padrao_origem = PathFiles().found_folder_config(
+            config=configuracao, competencia=competencia)
+
+        try:
+            registrar_logs_execucao(f'{os.listdir(caminho_padrao_origem)}')
+            for empresa in os.listdir(caminho_padrao_origem):
+                registrar_logs_execucao(
+                    f"{int(empresa.split('-')[0].split()[1])}, {int(cod_cliente)}")
+                if int(cod_cliente) == int(empresa.split('-')[0].split()[1]):
+                    origem = f'{caminho_padrao_origem}\\{empresa}\\'
+                    registrar_logs_execucao(origem)
+                    for arquivo in os.listdir(origem):
+                        caminho_origem = os.path.join(origem+os.sep+arquivo)
+                        registrar_logs_execucao(
+                            f'movendo---->{caminho_origem}')
+                        shutil.move(caminho_origem, os.path.join(
+                            self.path_default, 'step_1'))
+
+                    # os.rmdir(origem)
+        except Exception as e:
+            raise Exception(f'nao conseguiu finaliza copia dos arquivos {e}')
+
+    # gerar folha no questor
+    # copiar arquivos da pasta origem dos arquivos gerados
+    # W:\Pessoal\Fechamento de folha automatizado\Automação Folha\Configuração 0006 - FOLHA AUTOMATIZADA - JM\102023\Empresa 1104 - ARS CENTRO NOVO OTICA LTDA
+
+    # para o step1
 
 
 # Gerar 4 relatórios SEFIP
